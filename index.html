@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Система учёта</title>
+
+  <!-- Иконка на домашний экран iPhone. Эта страница НЕ в iframe (в отличие от GAS),
+       поэтому Safari читает apple-touch-icon отсюда. Файл 180x180 без прозрачности. -->
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/iLazovichGT/MyICO/main/liderpol-favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/iLazovichGT/MyICO/main/apple-touch-icon.png">
+
+  <!-- Полноэкранный режим + подпись под иконкой -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Система учёта">
+  <meta name="theme-color" content="#6C5CE7">
+
+  <style>
+    html, body {
+      margin: 0; height: 100%;
+      background: #6C5CE7;
+      font-family: system-ui, -apple-system, sans-serif;
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 20px;
+      -webkit-text-size-adjust: 100%;
+    }
+    img { width: 96px; height: 96px; border-radius: 22px; }
+    .t { font-size: 20px; font-weight: 700; }
+    .s { font-size: 14px; opacity: .8; }
+    a { color: #fff; }
+  </style>
+
+  <script>
+    // Ссылка на приложение (production exec).
+    var APP_URL = "https://script.google.com/macros/s/AKfycbwSXoUil2HLlEOXCYxdKQYN1LoFuQcNt4jP-EOe4B39jZhHdvyLi_7ZUwqqJYvGuvR4/exec";
+
+    // Определяем: открыто ли из иконки «Домой» (standalone) или обычной вкладкой Safari.
+    var standalone = (window.navigator.standalone === true) ||
+                     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+    // Из иконки — сразу редиректим в приложение. В обычной вкладке — даём добавить на «Домой».
+    if (standalone) {
+      location.replace(APP_URL);
+    }
+  </script>
+</head>
+<body>
+  <img src="https://raw.githubusercontent.com/iLazovichGT/MyICO/main/apple-touch-icon.png" alt="Система учёта">
+  <div class="t">Система учёта</div>
+  <div class="s" id="hint">Открываем приложение…</div>
+
+  <script>
+    // Обычная вкладка Safari: подсказка + переход по клику/через паузу.
+    if (!standalone) {
+      document.getElementById('hint').innerHTML =
+        'Нажмите «Поделиться» → «На экран „Домой"».<br><br>' +
+        '<a href="' + APP_URL + '">Или открыть приложение сейчас →</a>';
+    }
+  </script>
+</body>
+</html>
