@@ -32,12 +32,16 @@
       overflow: hidden; overscroll-behavior: none;
     }
     img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-    .t { font-size: 20px; font-weight: 700; }
+    .t { font-size: 20px; font-weight: 700;
+         background: linear-gradient(135deg, #6C5CE7, #A388EE);
+         -webkit-background-clip: text; background-clip: text;
+         -webkit-text-fill-color: transparent; }
     .s { font-size: 14px; opacity: .8; }
     a { color: #6C5CE7; }
     @media (prefers-color-scheme: dark) {
       html, body { background: #0F0F14; color: #F0F0F5; }
       a { color: #A388EE; }
+      .t { background: none; -webkit-text-fill-color: currentColor; }
     }
     /* Приложение во весь экран поверх заставки (заставка видна, пока GAS грузится). */
     #app {
