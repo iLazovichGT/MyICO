@@ -34,16 +34,65 @@
   </style>
 
   <script>
-    // Ссылка на приложение (production exec).
-    var APP_URL = "https://script.google.com/macros/s/AKfycbwSXoUil2HLlEOXCYxdKQYN1LoFuQcNt4jP-EOe4B39jZhHdvyLi_7ZUwqqJYvGuvR4/exec";
+    // ═══════════════════════════════════════════════════════════════════════
+    // Обёртка = (1) иконка на «Домой» iPhone + (2) ХРАНИТЕЛЬ ВХОДА.
+    //
+    // Почему хранитель здесь: приложение GAS живёт в стороннем iframe
+    // (googleusercontent.com), а iOS в standalone-режиме (запуск с иконки)
+    // НЕ сохраняет localStorage сторонних iframe между запусками — токен
+    // «запомнить устройство» стирался, и логин/пароль спрашивало каждый раз.
+    // localStorage ЭТОЙ страницы — первая сторона, живёт. Поэтому:
+    //  • токен сессии храним тут и отдаём приложению в URL (?icon=…&st=…);
+    //  • приложение после входа по паролю возвращает свежий токен навигацией
+    //    на #app=<ключ>&st=<токен> (сохранить) или #app=<ключ>&clear=1 (выход).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Белый список приложений (токен никуда, кроме них, не уйдёт).
+    // dev — разработка (Ирина, база TEST) — СЕЙЧАС ПО УМОЛЧАНИЮ (обкатка на dev, решение 16.07);
+    // prod — боевая система клиента (иконка для неё: добавить со страницы ?app=prod;
+    // при передаче клиенту сменить DEFAULT_APP на "prod").
+    var APPS = {
+      prod: "https://script.google.com/macros/s/AKfycbyM9X4IeQ9QxX_G1FqjcWGoz-eXVqxInIO1J9XlT1nCOwf53Sm-i6g-YXb2buUJAyTJ1g/exec",
+      dev:  "https://script.google.com/macros/s/AKfycbzkmQyfuE5iSTwk3-nLjt0ZZAud9vbTHuToTka-KV83zJ60LyAV0BXoyLaQ1k9PQhOI/exec"
+    };
+    var DEFAULT_APP = "dev";
+    var LS_TOKEN = "liderp_st";   // токен сессии («запомнить устройство»)
+    var LS_APP   = "liderp_app";  // какое приложение запускаем с этого устройства (prod|dev)
+
+    // Параметры из query (?app=…) И из hash (#app=…&st=…/clear=1). Query важен для иконки:
+    // iOS сохраняет URL страницы в момент добавления на «Домой» — вместе с ?app=…, поэтому
+    // выбор приложения переживает запуск в standalone (localStorage Safari туда НЕ переносится).
+    // Hash — канал команд от приложения: сохранить токен (#app=X&st=…) / стереть (#app=X&clear=1).
+    var h = {};
+    (location.search.replace(/^\?/, "") + "&" + location.hash.replace(/^#/, ""))
+      .split("&").forEach(function (p) {
+        if (!p) return;
+        var i = p.indexOf("=");
+        h[i < 0 ? p : p.slice(0, i)] = i < 0 ? "1" : decodeURIComponent(p.slice(i + 1));
+      });
+    if (h.app && APPS[h.app]) { try { localStorage.setItem(LS_APP, h.app); } catch (e) {} }
+    if (h.st)    { try { localStorage.setItem(LS_TOKEN, h.st); } catch (e) {} }
+    if (h.clear) { try { localStorage.removeItem(LS_TOKEN); } catch (e) {} }
+
+    var appKey = (h.app && APPS[h.app]) ? h.app : DEFAULT_APP;
+    try { appKey = localStorage.getItem(LS_APP) || appKey; } catch (e) {}
+    if (!APPS[appKey]) appKey = DEFAULT_APP;
+
+    // Ссылка в приложение: ключ приложения + сохранённый токен (если есть).
+    function appHref() {
+      var t = null;
+      try { t = localStorage.getItem(LS_TOKEN); } catch (e) {}
+      return APPS[appKey] + "?icon=" + appKey + (t ? "&st=" + encodeURIComponent(t) : "");
+    }
 
     // Определяем: открыто ли из иконки «Домой» (standalone) или обычной вкладкой Safari.
     var standalone = (window.navigator.standalone === true) ||
                      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 
-    // Из иконки — сразу редиректим в приложение. В обычной вкладке — даём добавить на «Домой».
-    if (standalone) {
-      location.replace(APP_URL);
+    // Из иконки — сразу в приложение. Пришла команда от приложения (#st/#clear) — тоже сразу
+    // обратно в приложение (мы здесь были только чтобы записать/стереть токен в НАШЕМ хранилище).
+    if (standalone || h.st || h.clear) {
+      location.replace(appHref());
     }
   </script>
 </head>
@@ -53,11 +102,11 @@
   <div class="s" id="hint">Открываем приложение…</div>
 
   <script>
-    // Обычная вкладка Safari: подсказка + переход по клику/через паузу.
+    // Обычная вкладка Safari: подсказка + переход по клику (тоже с токеном — вход без пароля).
     if (!standalone) {
       document.getElementById('hint').innerHTML =
         'Нажмите «Поделиться» → «На экран „Домой"».<br><br>' +
-        '<a href="' + APP_URL + '">Или открыть приложение сейчас →</a>';
+        '<a href="' + appHref() + '">Или открыть приложение сейчас →</a>';
     }
   </script>
 </body>
