@@ -163,11 +163,19 @@
   <div class="s" id="hint">Открываем приложение…</div>
 
   <script>
-    // Обычная вкладка Safari: подсказка + переход по клику (тоже с токеном — вход без пароля).
+    // Обычная вкладка (не с иконки): на ТЕЛЕФОНЕ — инструкция «На экран Домой» + ссылка;
+    // на ДЕСКТОПЕ инструкция бессмысленна (жалоба Ирины 16.07) — сразу открываем приложение.
     if (!standalone && !h.st && !h.clear) {
-      document.getElementById('hint').innerHTML =
-        'Нажмите «Поделиться» → «На экран „Домой"».<br><br>' +
-        '<a href="' + appHref() + '">Или открыть приложение сейчас →</a>';
+      var ua = navigator.userAgent || "";
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(ua) ||
+                     (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1); // iPad прикидывается Mac
+      if (isMobile) {
+        document.getElementById('hint').innerHTML =
+          'Нажмите «Поделиться» → «На экран „Домой"».<br><br>' +
+          '<a href="' + appHref() + '">Или открыть приложение сейчас →</a>';
+      } else {
+        location.replace(appHref());
+      }
     }
   </script>
 </body>
