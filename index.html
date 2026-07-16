@@ -67,6 +67,11 @@
       dev:  "https://script.google.com/macros/s/AKfycbzkmQyfuE5iSTwk3-nLjt0ZZAud9vbTHuToTka-KV83zJ60LyAV0BXoyLaQ1k9PQhOI/exec"
     };
     var DEFAULT_APP = "dev";
+    // Режим показа по приложениям. prod (доступ «Все», анонимный) — IFRAME: без панелей Safari.
+    // dev — доступ «по Google-аккаунту»: в стороннем iframe Safari НЕ отдаёт Google-cookies
+    // (третья сторона) → Google 4003 «нет доступа» (факт 16.07). Поэтому dev — РЕДИРЕКТ,
+    // как раньше (панели Safari остаются — цена Google-входа на dev).
+    var EMBED = { prod: true, dev: false };
     var LS_TOKEN = "liderp_st";   // база ключа токена; храним ПО ПРИЛОЖЕНИЯМ: liderp_st_dev / liderp_st_prod
     var LS_APP   = "liderp_app";  // какое приложение запускаем с этого устройства (prod|dev)
 
@@ -134,8 +139,9 @@
                      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 
     // Иконка «Домой» → приложение ВНУТРИ страницы (iframe): домен не меняется → нет панелей Safari.
+    // Только для приложений с анонимным доступом (EMBED) — иначе Google 403 в стороннем iframe.
     // &lo=1 после «Выйти» старым каналом: приложение НЕ автоопознаёт по Google эту загрузку.
-    if (standalone) {
+    if (standalone && EMBED[appKey]) {
       document.addEventListener("DOMContentLoaded", function () {
         var f = document.createElement("iframe");
         f.id = "app";
@@ -143,9 +149,10 @@
         f.src = appHref() + (h.clear ? "&lo=1" : "");
         document.body.appendChild(f);
       });
-    } else if (h.st || h.clear) {
-      // Вкладка Safari, вернулись командой от приложения (редирект-канал): записали/стёрли токен
-      // выше — сразу обратно в приложение. После «Выйти» — с одноразовым &lo=1.
+    } else if (standalone || h.st || h.clear) {
+      // Редирект-режим: (а) standalone для приложений БЕЗ iframe (dev — Google-вход, панели
+      // Safari остаются); (б) вкладка Safari, вернулись командой от приложения (записали/стёрли
+      // токен выше) — сразу обратно в приложение. После «Выйти» — с одноразовым &lo=1.
       location.replace(appHref() + (h.clear ? "&lo=1" : ""));
     }
   </script>
