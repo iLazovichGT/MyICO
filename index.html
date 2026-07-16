@@ -26,43 +26,55 @@
       display: flex; align-items: center; justify-content: center;
       flex-direction: column; gap: 20px;
       -webkit-text-size-adjust: 100%;
+      overflow: hidden; overscroll-behavior: none;
     }
     img { width: 96px; height: 96px; border-radius: 22px; }
     .t { font-size: 20px; font-weight: 700; }
     .s { font-size: 14px; opacity: .8; }
     a { color: #fff; }
+    /* Приложение во весь экран поверх заставки (заставка видна, пока GAS грузится). */
+    #app {
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      border: 0; z-index: 10; background: transparent;
+    }
   </style>
 
   <script>
     // ═══════════════════════════════════════════════════════════════════════
-    // Обёртка = (1) иконка на «Домой» iPhone + (2) ХРАНИТЕЛЬ ВХОДА.
+    // Обёртка = (1) иконка на «Домой» iPhone + (2) ХРАНИТЕЛЬ ВХОДА + (3) РАМКА.
     //
     // Почему хранитель здесь: приложение GAS живёт в стороннем iframe
     // (googleusercontent.com), а iOS в standalone-режиме (запуск с иконки)
     // НЕ сохраняет localStorage сторонних iframe между запусками — токен
     // «запомнить устройство» стирался, и логин/пароль спрашивало каждый раз.
-    // localStorage ЭТОЙ страницы — первая сторона, живёт. Поэтому:
-    //  • токен сессии храним тут и отдаём приложению в URL (?icon=…&st=…);
-    //  • приложение после входа по паролю возвращает свежий токен навигацией
-    //    на #app=<ключ>&st=<токен> (сохранить) или #app=<ключ>&clear=1 (выход).
+    // localStorage ЭТОЙ страницы — первая сторона, живёт.
+    //
+    // Почему РАМКА (iframe), а не редирект (изменение 16.07): iOS показывает
+    // панели Safari (адресная строка сверху + тулбар снизу), как только
+    // standalone-приложение УХОДИТ с домена иконки на чужой домен. Держим
+    // приложение во весь экран в iframe — верхний домен остаётся наш,
+    // панели не появляются. Токен приложение возвращает postMessage'м
+    // (см. слушатель ниже); старый канал «навигация на #app=X&st=…»
+    // сохранён для запуска обычной вкладкой Safari (там iframe не нужен).
     // ═══════════════════════════════════════════════════════════════════════
 
     // Белый список приложений (токен никуда, кроме них, не уйдёт).
-    // dev — разработка (Ирина, база TEST) — СЕЙЧАС ПО УМОЛЧАНИЮ (обкатка на dev, решение 16.07);
-    // prod — боевая система клиента (иконка для неё: добавить со страницы ?app=prod;
-    // при передаче клиенту сменить DEFAULT_APP на "prod").
+    // dev — разработка (Ирина, база TEST); prod — боевая система клиента.
+    // ЭТОТ файл — обёртка РАЗРАБОТЧИКА (репо iLazovichGT/MyICO): DEFAULT_APP='dev'.
+    // В копии для репозитория КЛИЕНТА DEFAULT_APP='prod' (см. client-repo/index.html).
     var APPS = {
       prod: "https://script.google.com/macros/s/AKfycbyM9X4IeQ9QxX_G1FqjcWGoz-eXVqxInIO1J9XlT1nCOwf53Sm-i6g-YXb2buUJAyTJ1g/exec",
       dev:  "https://script.google.com/macros/s/AKfycbzkmQyfuE5iSTwk3-nLjt0ZZAud9vbTHuToTka-KV83zJ60LyAV0BXoyLaQ1k9PQhOI/exec"
     };
     var DEFAULT_APP = "dev";
-    var LS_TOKEN = "liderp_st";   // токен сессии («запомнить устройство»)
+    var LS_TOKEN = "liderp_st";   // база ключа токена; храним ПО ПРИЛОЖЕНИЯМ: liderp_st_dev / liderp_st_prod
     var LS_APP   = "liderp_app";  // какое приложение запускаем с этого устройства (prod|dev)
 
     // Параметры из query (?app=…) И из hash (#app=…&st=…/clear=1). Query важен для иконки:
     // iOS сохраняет URL страницы в момент добавления на «Домой» — вместе с ?app=…, поэтому
     // выбор приложения переживает запуск в standalone (localStorage Safari туда НЕ переносится).
-    // Hash — канал команд от приложения: сохранить токен (#app=X&st=…) / стереть (#app=X&clear=1).
+    // Hash — канал команд от приложения ПРИ РЕДИРЕКТ-ЗАПУСКЕ (вкладка Safari): сохранить токен
+    // (#app=X&st=…) / стереть (#app=X&clear=1). В iframe-режиме команды идут postMessage'м.
     var h = {};
     (location.search.replace(/^\?/, "") + "&" + location.hash.replace(/^#/, ""))
       .split("&").forEach(function (p) {
@@ -71,29 +83,69 @@
         h[i < 0 ? p : p.slice(0, i)] = i < 0 ? "1" : decodeURIComponent(p.slice(i + 1));
       });
     if (h.app && APPS[h.app]) { try { localStorage.setItem(LS_APP, h.app); } catch (e) {} }
-    if (h.st)    { try { localStorage.setItem(LS_TOKEN, h.st); } catch (e) {} }
-    if (h.clear) { try { localStorage.removeItem(LS_TOKEN); } catch (e) {} }
 
     var appKey = (h.app && APPS[h.app]) ? h.app : DEFAULT_APP;
     try { appKey = localStorage.getItem(LS_APP) || appKey; } catch (e) {}
     if (!APPS[appKey]) appKey = DEFAULT_APP;
 
+    // Токен — отдельный на каждое приложение (dev-токен не должен уезжать в prod и наоборот).
+    // Старый общий ключ liderp_st читаем как наследие ТОЛЬКО для dev (токены копились в обкатке dev).
+    function tokenKey() { return LS_TOKEN + "_" + appKey; }
+    function getToken() {
+      var t = null;
+      try {
+        t = localStorage.getItem(tokenKey());
+        if (!t && appKey === "dev") t = localStorage.getItem(LS_TOKEN);
+      } catch (e) {}
+      return t;
+    }
+    function setToken(t) {
+      try { localStorage.setItem(tokenKey(), String(t)); localStorage.removeItem(LS_TOKEN); } catch (e) {}
+    }
+    function clearToken() {
+      try { localStorage.removeItem(tokenKey()); localStorage.removeItem(LS_TOKEN); } catch (e) {}
+    }
+
+    // Команды старого канала (навигацией) — обрабатываем до построения ссылки.
+    if (h.st)    setToken(h.st);
+    if (h.clear) clearToken();
+
     // Ссылка в приложение: ключ приложения + сохранённый токен (если есть).
     function appHref() {
-      var t = null;
-      try { t = localStorage.getItem(LS_TOKEN); } catch (e) {}
+      var t = getToken();
       return APPS[appKey] + "?icon=" + appKey + (t ? "&st=" + encodeURIComponent(t) : "");
     }
+
+    // Канал команд от приложения в iframe-режиме: postMessage {liderp:1, st:…|clear:1}.
+    // Принимаем ТОЛЬКО от Google-доменов, где живёт наше приложение (iframe GAS —
+    // *.googleusercontent.com, страница развёртывания — script.google.com).
+    window.addEventListener("message", function (ev) {
+      var d = ev.data || {};
+      if (d.liderp !== 1) return;
+      var okOrigin = ev.origin === "https://script.google.com" ||
+                     /^https:\/\/[^\/]+\.googleusercontent\.com$/.test(ev.origin);
+      if (!okOrigin) return;
+      if (d.st)    setToken(d.st);
+      if (d.clear) clearToken();
+    });
 
     // Определяем: открыто ли из иконки «Домой» (standalone) или обычной вкладкой Safari.
     var standalone = (window.navigator.standalone === true) ||
                      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 
-    // Из иконки — сразу в приложение. Пришла команда от приложения (#st/#clear) — тоже сразу
-    // обратно в приложение (мы здесь были только чтобы записать/стереть токен в НАШЕМ хранилище).
-    // После «Выйти» (clear) добавляем одноразовый &lo=1: приложение НЕ автоопознаёт по Google
-    // эту загрузку (на dev иначе автора вносит обратно, не дав ввести телефон+пароль).
-    if (standalone || h.st || h.clear) {
+    // Иконка «Домой» → приложение ВНУТРИ страницы (iframe): домен не меняется → нет панелей Safari.
+    // &lo=1 после «Выйти» старым каналом: приложение НЕ автоопознаёт по Google эту загрузку.
+    if (standalone) {
+      document.addEventListener("DOMContentLoaded", function () {
+        var f = document.createElement("iframe");
+        f.id = "app";
+        f.setAttribute("allow", "clipboard-write");
+        f.src = appHref() + (h.clear ? "&lo=1" : "");
+        document.body.appendChild(f);
+      });
+    } else if (h.st || h.clear) {
+      // Вкладка Safari, вернулись командой от приложения (редирект-канал): записали/стёрли токен
+      // выше — сразу обратно в приложение. После «Выйти» — с одноразовым &lo=1.
       location.replace(appHref() + (h.clear ? "&lo=1" : ""));
     }
   </script>
@@ -105,7 +157,7 @@
 
   <script>
     // Обычная вкладка Safari: подсказка + переход по клику (тоже с токеном — вход без пароля).
-    if (!standalone) {
+    if (!standalone && !h.st && !h.clear) {
       document.getElementById('hint').innerHTML =
         'Нажмите «Поделиться» → «На экран „Домой"».<br><br>' +
         '<a href="' + appHref() + '">Или открыть приложение сейчас →</a>';
